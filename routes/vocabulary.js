@@ -22,8 +22,19 @@ router.get('/vocabulary/:offset/:limit', function(req, res, next) {
   col = col.find(fo);
   col.skip(req.params.offset-0).limit(req.params.limit-0).sort({g0:1,w:1})
   .toArray(function (err,data) {
-    assert.equal(null,err);
-    res.json(data);
+    if(err==null){
+      res.json(data);
+    }
+  });
+});
+
+router.get('/vocabulary/group', function(req, res, next) {
+  var col = con.read.collection('vocabulary');
+  col.find({},{g0:1}).sort({g0:1})
+  .toArray(function (err,data) {
+    if(err==null){
+      res.json(data);
+    }
   });
 });
 
@@ -65,13 +76,20 @@ router.get('/youdao-dict', function(req, res, next) {
             tempCN.push(cns.eq(i).text().replace(/\s+/,' '));
           }
           ud.subs=tempCN;
+          cns = $('#ec > h2 > div > span > .phonetic');
+          if(cns.length > 1){
+            ud.phonetic = cns.eq(1).text().replace(/\s+/,' ');
+          }else if(cns.length == 1){
+            ud.phonetic = cns.eq(0).text().replace(/\s+/,' ');
+          }
         }
         col.findOneAndUpdate({_id:ObjectId(req.query._id)},{$set:ud},function(err, r) {
-          assert.equal(null, err);
-          requestCount--;
-          if(requestCount==0){
-              res.json(r.value);
-          }
+            if(err==null){
+              requestCount--;
+              if(requestCount==0){
+                  res.json(r.value);
+              }
+            }
         });
     }else{
         if(requestCount==0){
@@ -90,15 +108,16 @@ router.get('/youdao-dict', function(req, res, next) {
           ud.ENS=tempCN;
 
           col.findOneAndUpdate({_id:ObjectId(req.query._id)},{$set:ud},function(err, r) {
-            assert.equal(null, err);
-            requestCount--;
-            if(requestCount==0){
-                res.json(r.value);
+            if(err==null){
+              requestCount--;
+              if(requestCount==0){
+                  res.json(r.value);
+              }
             }
         });
       }else{
           if(requestCount==0){
-          res.send(response.statusCode);
+            res.send(response.statusCode);
           }
         }
     });
