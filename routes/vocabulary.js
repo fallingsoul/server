@@ -46,9 +46,14 @@ router.get('/vocabulary/group', function(req, res, next) {
   });
 });
 
-router.post('/vocabulary', function(req, res, next) {
+router.get('/vocabulary/replace', function(req, res, next) {
   var col = con.read.collection('vocabulary');
-  res.send('waiting');
+  col.find().toArray(function (err,list) {
+    list.forEach(function (v) {
+      col.updateOne({_id:ObjectId(v._id)},{$set:{w:v.w.replace(/\’/,'\'')}});
+    });
+  });
+  res.send('ok');
 });
 
 router.get('/youdao-dict', function(req, res, next) {
