@@ -20,7 +20,7 @@ router.get('/vocabulary/:offset/:limit', function(req, res, next) {
   }
   console.log(fo);
   col = col.find(fo);
-  col.skip(req.params.offset-0).limit(req.params.limit-0)
+  col.skip(req.params.offset-0).limit(req.params.limit-0).sort({g0:1,w:1})
   .toArray(function (err,data) {
     assert.equal(null,err);
     res.json(data);
