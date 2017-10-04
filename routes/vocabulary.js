@@ -32,8 +32,16 @@ router.get('/vocabulary/group', function(req, res, next) {
   var col = con.read.collection('vocabulary');
   col.find({},{g0:1}).sort({g0:1})
   .toArray(function (err,data) {
+    var map = {},r = [],t;
+    for(var i=0,l=data.length;i<l;i++){
+      t = data[i].g0;
+      if(t && !map[t]){
+        map[t] = true;
+        r.push(t);
+      }
+    }
     if(err==null){
-      res.json(data);
+      res.json(r);
     }
   });
 });
