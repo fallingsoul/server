@@ -7,6 +7,7 @@ const ObjectId = require('mongodb').ObjectId;
 
 const cheerio = require('cheerio');
 const request = require('request');
+const async = require('async');
 
 router.get('/vocabulary/:offset/:limit', function(req, res, next) {
   var col = con.read.collection('vocabulary');
@@ -48,21 +49,58 @@ router.get('/vocabulary/group', function(req, res, next) {
 
 router.get('/vocabulary/replace', function(req, res, next) {
   var col = con.read.collection('vocabulary');
-  col.find().toArray(function (err,list) {
-    list.forEach(function (v) {
-      col.updateOne({_id:ObjectId(v._id)},{$set:{w:v.w.replace(/\’/,'\'')}});
+  col.find().sort({w:1}).toArray(function (err,list) {
+    var last;
+    list.forEach((v) => {
+      if(last === v.w){
+        col.deleteOne({_id:ObjectId(v._id)},(err,r) => {
+          if(err){
+            console.log(err);
+            res.sendStatus(500,err);
+            return;
+          }
+          console.log(v.w+':'+r.deletedCount);
+        });
+      }else{
+        last = v.w;
+      }
     });
+    res.sendStatus(200);
   });
-  res.send('ok');
+});
+
+router.delete('/vocabulary', function(req, res, next) {
+  if(req.query._id===undefined){
+    res.sendStatus(400,"_id must offer");
+    return;
+  }
+  var col = con.read.collection('vocabulary');
+  col.deleteOne({_id:ObjectId(req.query._id)},(err,r) => {
+    if(err){
+      console.log(err);
+      res.sendStatus(500,err);
+      return;
+    }
+    res.sendStatus(200);
+  });
 });
 
 router.get('/youdao-dict', function(req, res, next) {
-  var col = con.read.collection('vocabulary');
-  var requestCount = 2;
   if(req.query.w && req.query._id){
-    request('https://m.youdao.com/dict?le=eng&q='+req.query.w,
-    function (err,response,body) {
-      if(response.statusCode==200){
+    var col = con.read.collection('vocabulary');
+    async.parallel([(callback)=>{
+      request('https://m.youdao.com/dict?le=eng&q='+req.query.w,
+      function (err,response,body) {
+        if(err){
+          console.log(err);
+          callback(true);
+          return;
+        }
+        if(response.statusCode!==200){
+          console.log(body);
+          callback(true);
+          return;
+        }
         const $ = cheerio.load(body);
         var i,j,k,l,tempCN = [],ud={},cns;
         if($('#ec').length == 0){
@@ -75,7 +113,12 @@ router.get('/youdao-dict', function(req, res, next) {
             ud.maybe=tempCN;
           }
           col.updateMany({_id:ObjectId(req.query._id)},{$set:ud},function(err, r) {
-            assert.equal(null, err);
+            if(err){
+              console.log(err);
+              callback(true);
+            }else{
+              callback(false);
+            }
           });
         }else{
           cns = $('#ec > ul > li');
@@ -96,43 +139,57 @@ router.get('/youdao-dict', function(req, res, next) {
             ud.phonetic = cns.eq(0).text().replace(/\s+/,' ');
           }
         }
-        col.findOneAndUpdate({_id:ObjectId(req.query._id)},{$set:ud},function(err, r) {
-            if(err==null){
-              requestCount--;
-              if(requestCount==0){
-                  res.json(r.value);
-              }
+        col.updateOne({_id:ObjectId(req.query._id)},{$set:ud},function(err, r) {
+            if(err){
+              console.log(err);
+              callback(true);
+            }else{
+              callback(false);
             }
         });
-    }else{
-        if(requestCount==0){
-          res.send(response.statusCode);
+      });
+    },(callback)=>{
+      request('https://m.youdao.com/singledict?dict=ee&le=eng&more=false&q='+req.query.w,function (err,response,body) {
+        if(err){
+          console.log(err);
+          callback(true);
+          return;
         }
+        if(response.statusCode!==200){
+          console.log(body);
+          callback(true);
+          return;
+        }
+        const $ = cheerio.load(body);
+        var cns = $('ul > li > ul > li > .col2 > span');
+        var i,j,k,l,tempCN = [],ud={};
+        for(i=0,l=cns.length;i<l;i++){
+          tempCN.push(cns.eq(i).text().replace(/\s+/,' '));
+        }
+        ud.ENS=tempCN;
+        col.updateOne({_id:ObjectId(req.query._id)},{$set:ud},function(err, r) {
+          if(err){
+            console.log(err);
+            callback(true);
+            return;
+          }
+          callback(false);
+        });
+      });
+    }],(err,results)=>{
+      if(err){
+        console.log(err);
+        res.sendStatus(500,err);
+        return;
       }
-    });
-    request('https://m.youdao.com/singledict?dict=ee&le=eng&more=false&q='+req.query.w,function (err,response,body) {
-        if(response.statusCode==200){
-          const $ = cheerio.load(body);
-          var cns = $('ul > li > ul > li > .col2 > span');
-          var i,j,k,l,tempCN = [],ud={};
-          for(i=0,l=cns.length;i<l;i++){
-            tempCN.push(cns.eq(i).text().replace(/\s+/,' '));
-          }
-          ud.ENS=tempCN;
-
-          col.findOneAndUpdate({_id:ObjectId(req.query._id)},{$set:ud},function(err, r) {
-            if(err==null){
-              requestCount--;
-              if(requestCount==0){
-                  res.json(r.value);
-              }
-            }
-        });
-      }else{
-          if(requestCount==0){
-            res.send(response.statusCode);
-          }
+      col.findOne({_id:ObjectId(req.query._id)},(err,r)=>{
+        if(err){
+          console.log(err);
+          res.sendStatus(500,err);
+          return;
         }
+        res.json(r);
+      });
     });
   }
 });
